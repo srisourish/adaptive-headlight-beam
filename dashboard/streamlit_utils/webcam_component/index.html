@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ADB Webcam Recorder</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #1c2230;
+      color: #e6edf3;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #30363d;
+    }
+    .webcam-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .preview-container {
+      position: relative;
+      width: 100%;
+      max-width: 720px;
+      aspect-ratio: 16 / 9;
+      background: #0d1117;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #30363d;
+      margin: 0 auto;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .recording-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(248, 81, 73, 0.9);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    .recording-badge .pulse {
+      width: 8px;
+      height: 8px;
+      background: #fff;
+      border-radius: 50%;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 4px;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    label {
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+    select {
+      background: #161b22;
+      color: #e6edf3;
+      border: 1px solid #30363d;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .btn {
+      background: #58a6ff;
+      color: #0d1117;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #79c0ff;
+    }
+    .btn:disabled {
+      background: #30363d;
+      color: #8b949e;
+      cursor: not-allowed;
+    }
+    .btn-danger {
+      background: #f85149;
+      color: #fff;
+    }
+    .btn-danger:hover {
+      background: #da3633;
+    }
+    .status-text {
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+    .progress-bar-container {
+      width: 100%;
+      height: 6px;
+      background: #161b22;
+      border-radius: 3px;
+      overflow: hidden;
+      display: none;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #f85149, #e3b341);
+      transition: width 0.1s linear;
+    }
+    .error-banner {
+      background: #2d1e0f;
+      border-left: 4px solid #f85149;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #f85149;
+      display: none;
+    }
+    .note-text {
+      font-size: 0.78rem;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="webcam-card" id="webcam-card">
+    <div class="error-banner" id="error-banner"></div>
+
+    <div class="preview-container">
+      <video id="preview" autoplay playsinline muted></video>
+      <div class="recording-badge" id="rec-badge">
+        <div class="pulse"></div>
+        <span id="rec-badge-text">REC 0s</span>
+      </div>
+    </div>
+
+    <div class="progress-bar-container" id="progress-container">
+      <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+
+    <div class="controls-row">
+      <div class="control-group">
+        <label for="duration-select">Clip Duration:</label>
+        <select id="duration-select">
+          <option value="5">5 seconds</option>
+          <option value="10" selected>10 seconds</option>
+          <option value="15">15 seconds</option>
+          <option value="manual">Manual (Start/Stop)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <button class="btn" id="rec-btn">🔴 Start Recording</button>
+      </div>
+    </div>
+
+    <div class="status-text" id="status-text">⏳ Initializing camera stream...</div>
+    <div class="note-text">
+      ℹ️ Browser camera permission required. Video will be captured in-browser and analyzed frame-by-frame.
+    </div>
+  </div>
+
+  <script>
+    // Streamlit Component Protocol
+    function sendMessageToStreamlit(type, data) {
+      var out = Object.assign({ isStreamlitMessage: true, type: type }, data);
+      window.parent.postMessage(out, "*");
+    }
+    function setComponentValue(val) {
+      sendMessageToStreamlit("streamlit:setComponentValue", { value: val });
+    }
+    function setFrameHeight(height) {
+      sendMessageToStreamlit("streamlit:setFrameHeight", { height: height || document.body.scrollHeight + 10 });
+    }
+
+    // Elements
+    const previewEl = document.getElementById('preview');
+    const recBadge = document.getElementById('rec-badge');
+    const recBadgeText = document.getElementById('rec-badge-text');
+    const recBtn = document.getElementById('rec-btn');
+    const durationSelect = document.getElementById('duration-select');
+    const statusText = document.getElementById('status-text');
+    const errorBanner = document.getElementById('error-banner');
+    const progressContainer = document.getElementById('progress-container');
+    const progressFill = document.getElementById('progress-fill');
+
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    let timerInterval = null;
+    let startTime = 0;
+    let targetDuration = 10;
+
+    // Report height periodically & on load
+    window.addEventListener('load', () => setFrameHeight());
+    window.addEventListener('resize', () => setFrameHeight());
+
+    // Initialize Camera
+    async function initCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError("Live webcam capture unavailable in this environment (MediaDevices API not supported or non-secure context) — please use the video upload option instead.");
+        setComponentValue({ error: "Camera API unavailable", bytes: null });
+        return;
+      }
+
+      try {
+        statusText.innerText = "⏳ Requesting camera permission...";
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+          audio: false
+        });
+        previewEl.srcObject = mediaStream;
+        statusText.innerText = "🟢 Camera ready — Select duration and click 'Start Recording'.";
+        recBtn.disabled = false;
+        errorBanner.style.display = "none";
+        setFrameHeight();
+      } catch (err) {
+        console.error("Camera access error:", err);
+        let msg = "Live webcam capture unavailable in this environment — please use the video upload option instead.";
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          msg = "⚠️ Camera access denied by user or browser setting. Live webcam capture unavailable — please use the video upload option instead.";
+        }
+        showError(msg);
+        recBtn.disabled = true;
+        setComponentValue({ error: msg, bytes: null });
+      }
+    }
+
+    function showError(msg) {
+      errorBanner.innerText = msg;
+      errorBanner.style.display = "block";
+      statusText.innerText = "❌ Camera error encountered.";
+      setFrameHeight();
+    }
+
+    // Recording Controls
+    function getSupportedMimeType() {
+      const types = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4'
+      ];
+      for (const type of types) {
+        if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) {
+          return type;
+        }
+      }
+      return '';
+    }
+
+    function startRecording() {
+      if (!mediaStream) return;
+      recordedChunks = [];
+
+      const mimeType = getSupportedMimeType();
+      const options = mimeType ? { mimeType } : {};
+
+      try {
+        mediaRecorder = new MediaRecorder(mediaStream, options);
+      } catch (e) {
+        console.error("MediaRecorder creation error:", e);
+        showError("MediaRecorder failed to initialize. Please use video upload option.");
+        return;
+      }
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = processRecording;
+
+      mediaRecorder.start(200); // chunk every 200ms
+      isRecording = true;
+      startTime = Date.now();
+
+      const durVal = durationSelect.value;
+      targetDuration = durVal === 'manual' ? 0 : parseFloat(durVal);
+
+      // UI state
+      recBtn.innerText = "⏹️ Stop Recording";
+      recBtn.classList.add('btn-danger');
+      recBadge.style.display = "flex";
+      progressContainer.style.display = "block";
+      progressFill.style.width = "0%";
+      durationSelect.disabled = true;
+
+      timerInterval = setInterval(updateRecordingProgress, 100);
+      updateRecordingProgress();
+    }
+
+    function stopRecording() {
+      if (!isRecording || !mediaRecorder) return;
+      isRecording = false;
+      clearInterval(timerInterval);
+      mediaRecorder.stop();
+
+      recBtn.innerText = "🔴 Start Recording";
+      recBtn.classList.remove('btn-danger');
+      recBtn.disabled = true;
+      recBadge.style.display = "none";
+      durationSelect.disabled = false;
+
+      statusText.innerText = "⚡ Processing recorded clip data...";
+    }
+
+    function updateRecordingProgress() {
+      const elapsedSec = (Date.now() - startTime) / 1000.0;
+      recBadgeText.innerText = `REC ${elapsedSec.toFixed(1)}s`;
+
+      if (targetDuration > 0) {
+        const pct = Math.min(100, (elapsedSec / targetDuration) * 100);
+        progressFill.style.width = pct + "%";
+        statusText.innerText = `🔴 Recording clip... ${elapsedSec.toFixed(1)}s / ${targetDuration}s`;
+
+        if (elapsedSec >= targetDuration) {
+          stopRecording();
+        }
+      } else {
+        progressFill.style.width = "100%";
+        statusText.innerText = `🔴 Recording clip (Manual)... ${elapsedSec.toFixed(1)}s`;
+      }
+    }
+
+    function processRecording() {
+      const mimeType = mediaRecorder.mimeType || 'video/webm';
+      const blob = new Blob(recordedChunks, { type: mimeType });
+
+      if (blob.size === 0) {
+        statusText.innerText = "⚠️ Recorded clip was empty. Try recording again.";
+        recBtn.disabled = false;
+        progressContainer.style.display = "none";
+        return;
+      }
+
+      statusText.innerText = `⚡ Processing recorded clip (${(blob.size / 1024).toFixed(1)} KB)... Sending to ADB pipeline...`;
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = reader.result.split(',')[1];
+        setComponentValue({
+          bytes: base64Data,
+          mimeType: mimeType,
+          size: blob.size,
+          timestamp: Date.now()
+        });
+        statusText.innerText = "✅ Clip sent for frame-by-frame analysis! See results below.";
+        progressContainer.style.display = "none";
+        recBtn.disabled = false;
+        setFrameHeight();
+      };
+      reader.readAsDataURL(blob);
+    }
+
+    // Button event listener
+    recBtn.addEventListener('click', () => {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+
+    // Start camera stream on page load
+    initCamera();
+  </script>
+</body>
+</html>
