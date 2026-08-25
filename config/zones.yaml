@@ -1,0 +1,35 @@
+# ============================================================
+# Zone Configuration — smart-adaptive-headlight
+# ============================================================
+# Defines the angular beam zones used by the matrix-LED
+# beam controller. Each zone spans a horizontal angle range
+# relative to the vehicle centerline (0° = straight ahead,
+# negative = left, positive = right).
+# ============================================================
+
+# Number of independently controllable LED zones
+zone_count: 8
+
+# Angular boundaries in degrees (zone_count + 1 values).
+# zone_boundaries[i] .. zone_boundaries[i+1] defines zone i.
+zone_boundaries: [-40.0, -30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0, 40.0]
+
+# Gamma exponent for brightness mapping:
+#   brightness = B_max * (1 - (risk / 100) ^ gamma)
+# Values > 1 give a gentler dim curve; < 1 dims more aggressively.
+gamma: 1.5
+
+# PWM brightness limits (0–255 for 8-bit PWM)
+brightness_min: 10       # Never fully off (safety minimum)
+brightness_max: 255      # Full brightness
+
+# Servo pan/tilt defaults (microseconds for standard servo)
+servo:
+  pan_center: 90         # degrees — straight ahead
+  tilt_center: 90        # degrees — level
+  pan_range: 45          # max deflection from center
+  tilt_range: 20         # max deflection from center
+  slew_rate: 5           # max degrees per control cycle
+
+# Zone overlap blending width (degrees) to soften zone edges
+blend_width: 2.0

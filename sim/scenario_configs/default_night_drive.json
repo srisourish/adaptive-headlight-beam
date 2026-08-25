@@ -1,0 +1,28 @@
+{
+  "scenario_name": "default_night_drive",
+  "map_name": "Town04",
+  "weather": {
+    "cloudiness": 80.0,
+    "precipitation": 0.0,
+    "sun_altitude_angle": -30.0,
+    "fog_density": 5.0
+  },
+  "ego_vehicle": {
+    "spawn_point": [100.0, 200.0, 0.5, 0.0, 90.0, 0.0],
+    "target_speed_kmh": 60.0
+  },
+  "traffic_actors": [
+    {
+      "type": "vehicle.tesla.model3",
+      "spawn_point": [100.0, 350.0, 0.5, 0.0, -90.0, 0.0],
+      "speed_kmh": 50.0,
+      "role": "oncoming"
+    },
+    {
+      "type": "vehicle.audi.tt",
+      "spawn_point": [103.5, 260.0, 0.5, 0.0, 90.0, 0.0],
+      "speed_kmh": 55.0,
+      "role": "same_lane_ahead"
+    }
+  ]
+}

@@ -1,0 +1,160 @@
+# ============================================================
+# Thresholds & Tuning Parameters — smart-adaptive-headlight
+# ============================================================
+# Central place for all decision thresholds, hysteresis
+# parameters, and weight factors used by the fusion and
+# decision modules.
+# ============================================================
+
+# --- Beam State Machine Thresholds ---
+beam:
+  # Minimum ego speed (km/h) to engage high beam
+  min_speed_high_beam: 40
+
+  # Risk thresholds for state transitions
+  risk_threshold_low: 20      # Below this → zone considered safe
+  risk_threshold_high: 60     # Above this → zone considered high-risk
+
+  # Fraction of zones that must be high-risk to force LOW_BEAM
+  majority_high_risk_fraction: 0.6
+
+  # Asymmetric hysteresis (seconds)
+  transition_to_protect_s: 0.15    # Fast: dim quickly when risk appears
+  transition_to_restore_s: 1.5     # Slow: restore brightness cautiously
+
+# --- Temporal Smoothing / Hold ---
+smoothing:
+  # Hold time (seconds): once a zone's risk exceeds the high
+  # threshold, keep it elevated for at least this long.
+  t_hold: 1.0
+
+  # Exponential moving average alpha for risk smoothing
+  ema_alpha: 0.3
+
+# --- Glare Risk Heuristic Weights ---
+# Used by fusion/glare_risk_model.py heuristic path.
+# Each weight is multiplied by a normalized [0, 1] sub-score.
+glare_risk_weights:
+  proximity: 0.25
+  closing_speed: 0.15
+  lane_relevance: 0.20
+  eye_exposure: 0.10
+  weather_penalty: 0.10
+  curvature_anticipation: 0.10
+  vertical_angle: 0.05
+  vehicle_height_class: 0.05
+
+# --- Weather Penalty Multipliers ---
+# Applied as a multiplicative factor on top of the base risk.
+weather_penalties:
+  clear: 1.0
+  rain: 1.3
+  fog: 1.6
+  dust: 1.4
+  snow: 1.5
+
+# --- Accident Risk Model Weights ---
+accident_risk_weights:
+  speed_factor: 0.25
+  visibility_factor: 0.25
+  curvature_factor: 0.20
+  weather_factor: 0.15
+  hazard_count_factor: 0.15
+
+# --- Override Safety ---
+override:
+  # Maximum brightness allowed when user forces HIGH beam
+  # while objects are detected (safety ceiling, 0-255)
+  force_high_ceiling: 180
+
+  # Keyboard key for override toggle in demo mode
+  toggle_key: "h"
+
+# --- Detection Filtering ---
+detection:
+  min_confidence: 0.35
+  # Classes relevant to glare risk (COCO class IDs)
+  relevant_classes:
+    - 0    # person
+    - 1    # bicycle
+    - 2    # car
+    - 3    # motorcycle
+    - 5    # bus
+    - 7    # truck
+
+# --- Depth Estimation ---
+depth:
+  # Maximum reliable depth in meters
+  max_depth_m: 200.0
+  # Minimum depth below which full dimming is applied
+  min_depth_m: 5.0
+
+# ============================================================
+# System Health & Predictive Diagnostics Thresholds
+# ============================================================
+# These are ILLUSTRATIVE DEFAULTS and require tuning against
+# real operating data before production deployment.
+# Each parameter maps directly to a check in diagnostics/health_monitor.py.
+# ============================================================
+health_diagnostics:
+
+  # Rolling window size (frames) for all signal buffers.
+  # Larger windows smooth noise but delay detection. Default: 40 frames.
+  window_size: 40
+
+  # Frames to keep a resolved finding visible in the dashboard before removing it.
+  cooldown_frames: 30
+
+  # --- Check 1: Detection confidence drift ---
+  # Rolling average YOLO confidence below this → WARNING.
+  # Drop to 75% of this threshold → CRITICAL.
+  # Tune: observe typical confidence distribution on your camera/scene.
+  detection_confidence_min: 0.55
+
+  # --- Check 2: Detection dropout rate ---
+  # Fraction of recent frames with ZERO detections exceeding this → WARNING.
+  # Exceeding 1.5× this → CRITICAL.
+  # Tune: set to the 95th-percentile naturally empty-frame rate for your route.
+  detection_dropout_max: 0.40
+
+  # --- Check 3: Depth estimation anomalies ---
+  # Fraction of depth samples at clip bounds (≤0.1 m or ≥200 m) → WARNING.
+  # Tune: measure baseline clip rate on your calibrated setup.
+  depth_clip_boundary_max: 0.35
+
+  # --- Check 4: Tracker churn rate ---
+  # New track ID spawns per detection (averaged over window) → WARNING.
+  # Value of 1.0 means every detection spawns a new ID (worst case churn).
+  # Tune: measure on stable scenes where objects persist across 10+ frames.
+  tracker_churn_max: 0.60
+
+  # --- Check 5: Frame processing latency ---
+  # Rolling average per-frame total latency in milliseconds → WARNING.
+  # Exceeding 1.5× → CRITICAL.
+  # Tune: profile your target hardware to set a realistic baseline.
+  latency_max_ms: 120.0
+
+  # --- Check 6: Serial / actuation health ---
+  # Cumulative serial error events (watchdog triggers, dropped packets,
+  # reconnect events) above this count → WARNING.
+  # Tune: set to 0 for zero-tolerance, or 1-2 to tolerate transient glitches.
+  serial_error_max: 1
+
+  # --- Check 7: Weather classifier fallback engagement ---
+  # Fraction of frames using rule-based fallback → WARNING.
+  # Only meaningful when a CNN model checkpoint is expected to be loaded.
+  # Tune: set to 0.0 to require CNN classification at all times.
+  weather_fallback_max: 0.50
+
+  # --- Check 8: Beam state machine oscillation ---
+  # Beam state transitions per frame (fraction within window) → WARNING.
+  # The hysteresis timings should hold this well below 0.1 during normal operation.
+  # Tune: measure on normal highway drive to establish baseline transition frequency.
+  beam_oscillation_max: 0.15
+
+  # --- Check 9: Explainability confidence gaps ---
+  # Fraction of high-risk zone decisions where top-feature attribution is
+  # near-zero → WARNING. Suggests feature vector corruption.
+  # Near-zero attribution defined as: max(|contributions|) < 0.05
+  # Tune: profile attribution distributions for your typical feature mix.
+  explainability_gap_max: 0.30
